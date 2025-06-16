@@ -1,13 +1,20 @@
 import type { Address } from 'viem'
+import { formatEther as viemFormatEther } from 'viem'
 
 export function formatAddress(address: Address | undefined): string {
   if (!address) return 'Not connected'
   return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
+// Custom formatEther function that accepts decimals parameter
 export function formatEther(value: bigint, decimals: number = 4): string {
-  const formatted = Number(value) / 1e18
-  return formatted.toFixed(decimals)
+  const etherValue = Number(value) / 1e18
+  return etherValue.toFixed(decimals)
+}
+
+// Use viem's formatEther when you don't need custom decimals
+export function formatEtherStandard(value: bigint): string {
+  return viemFormatEther(value)
 }
 
 export function formatNumber(value: number, decimals: number = 2): string {

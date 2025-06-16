@@ -10,17 +10,18 @@ import {
   Download,
   Share2,
   Calendar,
-  Tag,
   ExternalLink,
   Plus,
   DollarSign,
   Activity,
-  Users
+  Users,
+  Globe
 } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { useAppStore } from '../store/appStore'
 import { formatDate, formatEther, formatNumber } from '../utils/formatters'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import DeBridgeClaimModal from '../components/deBridgeModal'
 
 // Mock data for demonstration
 const mockPortfolioData = {
@@ -30,6 +31,7 @@ const mockPortfolioData = {
   reputation: 847,
   totalLicenses: 28,
   activeDisputes: 2,
+  pendingRewards: BigInt('2500000000000000000'), // 2.5 tokens available to claim
 }
 
 const mockAssets = [
@@ -89,6 +91,16 @@ export default function Portfolio() {
   const { user } = useAppStore()
   const [selectedTab, setSelectedTab] = useState<'assets' | 'earnings' | 'analytics'>('assets')
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [showDeBridgeModal, setShowDeBridgeModal] = useState(false)
+
+  const handleClaimRewards = () => {
+    // Traditional claim logic here
+    console.log('Claiming rewards normally...')
+  }
+
+  const handleClaimWithDeBridge = () => {
+    setShowDeBridgeModal(true)
+  }
 
   if (!isConnected) {
     return (
@@ -145,7 +157,7 @@ export default function Portfolio() {
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total Earnings</p>
               <p className="text-2xl font-bold text-foreground">
-                {formatEther(mockPortfolioData.totalEarnings, 2)}
+                {parseFloat(formatEther(mockPortfolioData.totalEarnings)).toFixed(2)}
               </p>
             </div>
             <div className="p-3 bg-success-100 rounded-lg">
@@ -193,6 +205,47 @@ export default function Portfolio() {
           </div>
         </div>
       </motion.div>
+
+      {/* Rewards Section with deBridge Option */}
+      {mockPortfolioData.pendingRewards > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="card p-6 mb-8 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <Coins className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Pending Rewards</h3>
+                <p className="text-2xl font-bold text-blue-600">
+                  {parseFloat(formatEther(mockPortfolioData.pendingRewards)).toFixed(2)} tokens
+                </p>
+                <p className="text-sm text-gray-600">Available to claim from your IP activities</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={handleClaimRewards}
+                className="btn btn-outline px-6 py-3"
+              >
+                <Award className="h-4 w-4 mr-2" />
+                Claim Rewards
+              </button>
+              <button
+                onClick={handleClaimWithDeBridge}
+                className="btn btn-default px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
+              >
+                <Globe className="h-4 w-4 mr-2" />
+                Claim with deBridge
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Tabs */}
       <motion.div
@@ -283,7 +336,7 @@ export default function Portfolio() {
                       <div>
                         <p className="text-xs text-muted-foreground">Earnings</p>
                         <p className="font-medium text-success-600">
-                          {formatEther(asset.earnings, 2)} tokens
+                          {parseFloat(formatEther(asset.earnings)).toFixed(2)} tokens
                         </p>
                       </div>
                       <div>
@@ -461,11 +514,30 @@ export default function Portfolio() {
                     </p>
                   </div>
                 </div>
+
+                <div className="flex items-start space-x-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Globe className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-blue-800">Cross-Chain Opportunities</h4>
+                    <p className="text-sm text-blue-700">
+                      Your rewards can be claimed across multiple blockchains using deBridge for better liquidity and trading options.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         )}
       </motion.div>
+
+      {/* deBridge Claim Modal */}
+      <DeBridgeClaimModal
+        isOpen={showDeBridgeModal}
+        onClose={() => setShowDeBridgeModal(false)}
+        rewardAmount={mockPortfolioData.pendingRewards}
+        rewardToken="IP"
+        title="Claim Rewards with deBridge"
+      />
     </div>
   )
 }

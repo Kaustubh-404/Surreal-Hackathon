@@ -1,5 +1,11 @@
 import type { Address } from 'viem'
 
+// Utility function for formatting ether with decimals
+export function formatEtherWithDecimals(value: bigint, decimals: number = 4): string {
+  const etherValue = Number(value) / 1e18
+  return etherValue.toFixed(decimals)
+}
+
 export interface IPAsset {
   id: string
   tokenId: string

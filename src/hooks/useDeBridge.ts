@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import type { Address } from 'viem'
-import { DeBridgeService, type DeBridgeChain, type DeBridgeQuote, type DeTipPayment } from '../services/deBridgeService'
+import { DeBridgeService, type DeBridgeChain, type DeBridgeQuote, type DeBridgeSwapParams } from '../services/deBridgeService'
 import { useAppStore } from '../store/appStore'
+import { PaymentStatus } from '../types/global'
 import toast from 'react-hot-toast'
 
 export function useDeBridge() {
@@ -60,192 +61,103 @@ export function useDeBridge() {
     }
   }, [deBridgeService, isInitialized])
 
-  // Create deTip payment for AI agent services
-  const payAIAgentService = useCallback(async (params: {
-    agentAddress: Address
-    serviceId: string
-    amount: bigint
-    token: Address
-    sourceChain: number
-    targetChain: number
-    metadata?: any
-  }) => {
-    if (!isInitialized || !isConnected) {
-      throw new Error('deBridge service not initialized or wallet not connected')
-    }
-
-    try {
-      setLoading(true)
-
-      const result = await deBridgeService.payAIAgentService(params)
-      
-      // Track the payment in our store
-      const payment = {
-        txHash: result.orderId,
-        sourceChain: params.sourceChain.toString(),
-        targetChain: params.targetChain.toString(),
-        amount: params.amount,
-        token: params.token,
-        recipient: params.agentAddress,
-        status: 'pending' as const,
-      }
-      
-      addCrossChainPayment(payment)
-      toast.success('AI Agent payment initiated!')
-      
-      return result
-    } catch (error) {
-      console.error('Failed to pay AI agent:', error)
-      toast.error('Failed to process AI agent payment')
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }, [deBridgeService, isInitialized, isConnected, setLoading, addCrossChainPayment])
-
-  // Send deTip payment
-  const sendDeTip = useCallback(async (payment: DeTipPayment) => {
-    if (!isInitialized || !isConnected) {
-      throw new Error('deBridge service not initialized or wallet not connected')
-    }
-
-    try {
-      setLoading(true)
-
-      const result = await deBridgeService.createDeTipTransaction(payment)
-      
-      // Track the payment
-      const crossChainPayment = {
-        txHash: result.orderId,
-        sourceChain: payment.sourceChain.toString(),
-        targetChain: payment.targetChain.toString(),
-        amount: payment.amount,
-        token: payment.token,
-        recipient: payment.recipient,
-        status: 'pending' as const,
-      }
-      
-      addCrossChainPayment(crossChainPayment)
-      toast.success('Cross-chain payment initiated!')
-      
-      return result
-    } catch (error) {
-      console.error('Failed to send deTip:', error)
-      toast.error('Failed to send cross-chain payment')
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }, [deBridgeService, isInitialized, isConnected, setLoading, addCrossChainPayment])
-
-  // Track payment status
-  const trackPayment = useCallback(async (orderId: string) => {
+  // Open deBridge interface for cross-chain swap
+  const openDeBridgeSwap = useCallback((params: DeBridgeSwapParams) => {
     if (!isInitialized) {
-      throw new Error('deBridge service not initialized')
+      toast.error('deBridge service not initialized')
+      return
     }
 
     try {
-      const payment = await deBridgeService.trackPayment(orderId)
+      // Create a payment record for tracking
+      const paymentRecord = deBridgeService.createPaymentRecord(params)
+      addCrossChainPayment(paymentRecord)
       
-      if (payment) {
-        updateCrossChainPayment(orderId, payment)
-      }
+      // Open deBridge interface
+      deBridgeService.openDeBridge(params)
       
-      return payment
+      toast.success('Opening deBridge interface...')
     } catch (error) {
-      console.error('Failed to track payment:', error)
-      return null
+      console.error('Failed to open deBridge:', error)
+      toast.error('Failed to open deBridge interface')
     }
-  }, [deBridgeService, isInitialized, updateCrossChainPayment])
+  }, [deBridgeService, isInitialized, addCrossChainPayment])
 
-  // Distribute royalties across chains
-  const distributeRoyalties = useCallback(async (params: {
-    totalAmount: bigint
-    token: Address
-    recipients: Array<{
-      address: Address
-      percentage: number
-      chainId: number
-    }>
-    sourceChain: number
-  }) => {
-    if (!isInitialized || !isConnected) {
-      throw new Error('deBridge service not initialized or wallet not connected')
-    }
-
-    try {
-      setLoading(true)
-
-      const result = await deBridgeService.distributeRoyalties(params)
-      
-      // Track all payments
-      for (const orderId of result.orderIds) {
-        const payment = {
-          txHash: orderId,
-          sourceChain: params.sourceChain.toString(),
-          targetChain: 'multiple',
-          amount: params.totalAmount,
-          token: params.token,
-          recipient: '0x0000000000000000000000000000000000000000' as Address, // Multiple recipients
-          status: 'pending' as const,
-        }
-        
-        addCrossChainPayment(payment)
-      }
-
-      toast.success('Cross-chain royalty distribution initiated!')
-      return result
-    } catch (error) {
-      console.error('Failed to distribute royalties:', error)
-      toast.error('Failed to distribute cross-chain royalties')
-      throw error
-    } finally {
-      setLoading(false)
-    }
-  }, [deBridgeService, isInitialized, isConnected, setLoading, addCrossChainPayment])
-
-  // Estimate gas for cross-chain transaction
-  const estimateGas = useCallback(async (params: {
-    srcChainId: number
-    dstChainId: number
+  // Claim rewards with deBridge
+  const claimWithDeBridge = useCallback((params: {
+    fromChain: number
+    toChain: number
+    fromToken: string
+    toToken: string
     amount: string
+    userAddress: string
   }) => {
-    if (!isInitialized) {
-      throw new Error('deBridge service not initialized')
+    const swapParams: DeBridgeSwapParams = {
+      inputChain: params.fromChain,
+      inputCurrency: params.fromToken,
+      outputChain: params.toChain,
+      outputCurrency: params.toToken,
+      address: params.userAddress,
+      amount: params.amount,
     }
 
-    try {
-      const estimate = await deBridgeService.estimateGas(params)
-      return estimate
-    } catch (error) {
-      console.error('Failed to estimate gas:', error)
-      return null
-    }
-  }, [deBridgeService, isInitialized])
+    openDeBridgeSwap(swapParams)
+  }, [openDeBridgeSwap])
 
-  // Get AI Agent plugin interface
-  const getAIAgentPlugin = useCallback(() => {
-    return deBridgeService.createAIAgentPlugin()
+  // Get token address for a chain and symbol
+  const getTokenAddress = useCallback((chainId: number, symbol: string): string => {
+    return deBridgeService.getTokenAddress(chainId, symbol)
   }, [deBridgeService])
 
-  // Monitor pending payments
-  useEffect(() => {
-    if (!isInitialized) return
+  // Get popular tokens for a chain
+  const getPopularTokens = useCallback((chainId: number) => {
+    return deBridgeService.getPopularTokens(chainId)
+  }, [deBridgeService])
 
-    const interval = setInterval(async () => {
-      const pendingPayments = crossChainPayments.filter(p => p.status === 'pending')
-      
-      for (const payment of pendingPayments) {
-        try {
-          await trackPayment(payment.txHash)
-        } catch (error) {
-          console.error('Failed to track payment:', payment.txHash, error)
-        }
+  // Check if chain/token is supported
+  const isSupported = useCallback((chainId: number, tokenAddress?: string): boolean => {
+    return deBridgeService.isSupported(chainId, tokenAddress)
+  }, [deBridgeService])
+
+  // Format amount for deBridge
+  const formatAmount = useCallback((amount: string, decimals: number = 18): string => {
+    return deBridgeService.formatAmount(amount, decimals)
+  }, [deBridgeService])
+
+  // Parse amount from wei
+  const parseAmount = useCallback((amount: string, decimals: number = 18): string => {
+    return deBridgeService.parseAmount(amount, decimals)
+  }, [deBridgeService])
+
+  // Get chain name
+  const getChainName = useCallback((chainId: number): string => {
+    return deBridgeService.getChainName(chainId)
+  }, [deBridgeService])
+
+  // Build deBridge URL (for preview or sharing)
+  const buildDeBridgeUrl = useCallback((params: DeBridgeSwapParams): string => {
+    return deBridgeService.buildDeBridgeUrl(params)
+  }, [deBridgeService])
+
+  // Update payment status (manual update since we don't have API)
+  const updatePaymentStatus = useCallback((txHash: string, status: PaymentStatus) => {
+    updateCrossChainPayment(txHash, { status })
+    
+    const statusMessage = {
+      [PaymentStatus.CONFIRMED]: 'Transaction confirmed!',
+      [PaymentStatus.FAILED]: 'Transaction failed',
+      [PaymentStatus.CANCELLED]: 'Transaction cancelled',
+      [PaymentStatus.PENDING]: 'Transaction pending...',
+    }[status]
+
+    if (statusMessage && status !== PaymentStatus.PENDING) {
+      if (status === PaymentStatus.CONFIRMED) {
+        toast.success(statusMessage)
+      } else {
+        toast.error(statusMessage)
       }
-    }, 30000) // Check every 30 seconds
-
-    return () => clearInterval(interval)
-  }, [isInitialized, crossChainPayments, trackPayment])
+    }
+  }, [updateCrossChainPayment])
 
   return {
     isInitialized,
@@ -253,11 +165,15 @@ export function useDeBridge() {
     supportedChains,
     crossChainPayments,
     getQuote,
-    sendDeTip,
-    payAIAgentService,
-    trackPayment,
-    distributeRoyalties,
-    estimateGas,
-    getAIAgentPlugin,
+    openDeBridgeSwap,
+    claimWithDeBridge,
+    getTokenAddress,
+    getPopularTokens,
+    isSupported,
+    formatAmount,
+    parseAmount,
+    getChainName,
+    buildDeBridgeUrl,
+    updatePaymentStatus,
   }
 }

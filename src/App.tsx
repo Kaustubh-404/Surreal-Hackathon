@@ -16,7 +16,7 @@ import Settings from './pages/Settings'
 import Help from './pages/Help'
 import { useAppStore } from './store/appStore'
 import { validateEnv } from './config/env'
-import './index.css'
+
 
 function AppContent() {
   const { setError } = useAppStore()
