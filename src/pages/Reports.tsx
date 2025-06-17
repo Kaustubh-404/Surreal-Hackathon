@@ -1,11 +1,10 @@
 import { useState } from 'react'
+import { type Address, parseEther } from 'viem'
 import { motion } from 'framer-motion'
 import { 
   AlertTriangle, 
   Plus, 
   Search, 
-  Filter,
-  Eye,
   ThumbsUp,
   ThumbsDown,
   Clock,
@@ -22,6 +21,8 @@ import { useAppStore } from '../store/appStore'
 import { formatDate, formatEther, formatAddress } from '../utils/formatters'
 import { ViolationType, ReportStatus } from '../types/global'
 import type { IPReport } from '../types/global'
+import { uploadTextToIPFS } from '../utils/uploadToIpfs'
+import { client } from '../utils/config'
 
 // Mock data for demonstration
 const mockReports: IPReport[] = [
@@ -131,13 +132,27 @@ export default function Reports() {
     }
   }
 
+  const handleCreateReport = async(IP_ID: Address, EVIDENCE: string, bond: string) => {
+    const disputeHash = await uploadTextToIPFS(EVIDENCE)
+    console.log(`Dispute evidence uploaded to IPFS: ${disputeHash}`)
+
+    // Raise a Dispute
+    const disputeResponse = await client.dispute.raiseDispute({
+        targetIpId: IP_ID,
+        cid: disputeHash,
+        targetTag: 'IMPROPER_REGISTRATION',
+        bond: parseEther(bond),
+        liveness: 2592000, // 30 days
+        txOptions: { waitForTransaction: true },
+    } as any)
+    console.log(`Dispute raised at transaction hash ${disputeResponse.txHash}, Dispute ID: ${disputeResponse.disputeId}`)
+  }
+
   const handleVote = (reportId: string, vote: boolean) => {
-    // In a real app, this would call the smart contract
     console.log('Voting on report:', reportId, 'Vote:', vote)
   }
 
   const handleStakeOnReport = (reportId: string) => {
-    // In a real app, this would open staking modal
     console.log('Staking on report:', reportId)
   }
 
@@ -495,7 +510,7 @@ export default function Reports() {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-default">
+                <button type="submit" className="btn btn-default" onClick={() => handleCreateReport}>
                   Submit Report
                 </button>
               </div>
