@@ -53,6 +53,7 @@ export class StoryService {
     imageUrl: string
     category: string
     tags: string[]
+    recipient?: Address
   }): Promise<{ ipId: string; tokenId: string; txHash: string }> {
     const client = await this.ensureClient()
 
@@ -95,7 +96,9 @@ export class StoryService {
       const nftMetadataHashBytes = keccak256(toBytes(JSON.stringify(nftMetadata)))
 
       console.log('Registering IP Asset on Story Protocol...')
-      const response = await client.ipAsset.mintAndRegisterIp({
+      
+      // FIXED: Use provided recipient or remove it to use default
+      const requestParams: any = {
         spgNftContract: params.spgNftContract,
         ipMetadata: {
           ipMetadataURI: `https://gateway.pinata.cloud/ipfs/${ipMetadataHash}`,
@@ -103,7 +106,14 @@ export class StoryService {
           nftMetadataURI: `https://gateway.pinata.cloud/ipfs/${nftMetadataHash}`,
           nftMetadataHash: nftMetadataHashBytes,
         },
-      })
+      }
+
+      // Add recipient if provided
+      if (params.recipient) {
+        requestParams.recipient = params.recipient
+      }
+
+      const response = await client.ipAsset.mintAndRegisterIp(requestParams)
 
       console.log('IP Asset registered successfully!')
       return {
@@ -303,6 +313,7 @@ export class StoryService {
     imageUrl: string
     category: string
     tags: string[]
+    recipient?: Address
   }): Promise<{ ipId: string; tokenId: string; txHash: string }> {
     const client = await this.ensureClient()
 
@@ -341,7 +352,9 @@ export class StoryService {
       const nftMetadataHashBytes = keccak256(toBytes(JSON.stringify(nftMetadata)))
 
       console.log('Registering derivative IP on Story Protocol...')
-      const response = await client.ipAsset.mintAndRegisterIpAndMakeDerivative({
+      
+      // FIXED: Use provided recipient or remove it to use default
+      const requestParams: any = {
         spgNftContract: params.spgNftContract,
         derivData: {
           parentIpIds: params.parentIpIds as `0x${string}`[],
@@ -353,7 +366,14 @@ export class StoryService {
           nftMetadataURI: `https://gateway.pinata.cloud/ipfs/${nftMetadataHash}`,
           nftMetadataHash: nftMetadataHashBytes,
         },
-      })
+      }
+
+      // Add recipient if provided
+      if (params.recipient) {
+        requestParams.recipient = params.recipient
+      }
+
+      const response = await client.ipAsset.mintAndRegisterIpAndMakeDerivative(requestParams)
 
       console.log('Derivative IP registered successfully!')
       return {

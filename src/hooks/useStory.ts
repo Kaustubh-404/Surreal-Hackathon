@@ -1,11 +1,11 @@
-// src/hooks/useStory.ts - Fixed implementation with correct DisputeTargetTag
+// src/hooks/useStory.ts - Clean implementation with proper wallet integration
 import { useState, useEffect, useCallback } from 'react'
 import { useWalletClient, useAccount } from 'wagmi'
 import { StoryService } from '../services/storyService'
 import { storyClientManager } from '../config/storyClient'
 import { useAppStore } from '../store/appStore'
 import { CONTRACT_ADDRESSES } from '../config/env'
-import { DisputeTargetTag } from '@story-protocol/core-sdk' // Import the correct type
+import { DisputeTargetTag } from '@story-protocol/core-sdk'
 import toast from 'react-hot-toast'
 
 export function useStory() {
@@ -14,6 +14,7 @@ export function useStory() {
   const [storyService, setStoryService] = useState<StoryService | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [initError, setInitError] = useState<string | null>(null)
   const { setLoading: setGlobalLoading, setError, addIPAsset, addReport } = useAppStore()
 
   // Initialize Story client when wallet is connected
@@ -21,11 +22,29 @@ export function useStory() {
     async function initializeStory() {
       try {
         setIsLoading(true)
+        setInitError(null)
         setError(null)
 
         if (walletClient && isConnected && address) {
           console.log('Initializing Story client with wallet...')
-          await storyClientManager.initializeWithWallet(walletClient)
+          console.log('Wallet client:', walletClient)
+          console.log('Address:', address)
+          
+          // Enhance wallet client with required methods and account
+          const enhancedWalletClient = {
+            ...walletClient,
+            account: walletClient.account || { address },
+            getAddresses: async () => [address],
+            requestAddresses: async () => [address],
+          }
+
+          await storyClientManager.initializeWithWallet(enhancedWalletClient)
+          
+          // Verify initialization
+          if (!storyClientManager.isInitialized()) {
+            throw new Error('Story client initialization verification failed')
+          }
+
           const service = new StoryService()
           setStoryService(service)
           setIsInitialized(true)
@@ -35,11 +54,14 @@ export function useStory() {
           storyClientManager.reset()
           setStoryService(null)
           setIsInitialized(false)
+          setInitError('Wallet connection required')
           console.log('Story client reset - wallet required')
         }
       } catch (error) {
         console.error('Failed to initialize Story client:', error)
-        setError('Failed to initialize Story client')
+        const errorMessage = error instanceof Error ? error.message : 'Failed to initialize Story client'
+        setInitError(errorMessage)
+        setError(errorMessage)
         setIsInitialized(false)
         storyClientManager.reset()
         setStoryService(null)
@@ -100,6 +122,11 @@ export function useStory() {
       // Use provided SPG contract or default one
       const spgContract = params.spgNftContract || CONTRACT_ADDRESSES.aeneid.SPG_NFT_IMPL
 
+      // Validate that we have a proper address
+      if (!address) {
+        throw new Error('No wallet address available')
+      }
+
       // First, register the IP asset
       console.log('Starting IP registration process...')
       const result = await storyService.registerIPAsset({
@@ -109,6 +136,7 @@ export function useStory() {
         imageUrl: params.imageUrl,
         category: params.category,
         tags: params.tags,
+        recipient: address, // Pass the wallet address as recipient
       })
 
       // Add to app store
@@ -120,8 +148,8 @@ export function useStory() {
         category: params.category as any,
         ipfsHash: '',
         metadataURI: '',
-        owner: address!,
-        creator: address!,
+        owner: address,
+        creator: address,
         licenseTerms: {
           commercial: params.commercialUse || false,
           derivatives: params.derivativesAllowed || false,
@@ -155,7 +183,8 @@ export function useStory() {
       return result
     } catch (error) {
       console.error('Failed to register IP:', error)
-      toast.error('Failed to register IP Asset')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to register IP Asset'
+      toast.error(errorMessage)
       throw error
     } finally {
       setGlobalLoading(false)
@@ -191,6 +220,7 @@ export function useStory() {
         imageUrl: params.imageUrl,
         category: params.category,
         tags: params.tags,
+        recipient: address, // Pass the wallet address as recipient
       })
 
       // Add to app store
@@ -323,11 +353,11 @@ export function useStory() {
     }
   }, [storyService, isInitialized, address, setGlobalLoading])
 
-  // Raise dispute - FIXED: Now uses the correct DisputeTargetTag type
+  // Raise dispute
   const raiseDispute = useCallback(async (params: {
     targetIpId: string
     evidence: string
-    targetTag: DisputeTargetTag // Now uses the correct imported type
+    targetTag: DisputeTargetTag
     bond?: string
   }) => {
     if (!storyService || !isInitialized) {
@@ -346,7 +376,6 @@ export function useStory() {
 
       // Helper function to convert DisputeTargetTag to violation type string
       const getViolationType = (tag: DisputeTargetTag): string => {
-        // Convert enum to lowercase string for app store
         return tag.toString().toLowerCase().replace('_', '')
       }
 
@@ -388,6 +417,7 @@ export function useStory() {
     isInitialized,
     isConnected,
     isLoading,
+    initError,
     address,
     createNFTCollection,
     registerIP,
@@ -401,3 +431,5 @@ export function useStory() {
 
 // Export the DisputeTargetTag for use in components
 export { DisputeTargetTag }
+
+
