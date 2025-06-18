@@ -7,9 +7,7 @@ import DiscoverIP from './pages/DiscoverIP'
 import RegisterIP from './pages/RegisterIP'
 import Reports from './pages/Reports'
 import Portfolio from './pages/Portfolio'
-import Staking from './pages/Staking'
 import CrossChain from './pages/CrossChain'
-import AIAgents from './pages/AIAgent'
 import Community from './pages/Community'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
@@ -39,9 +37,7 @@ function AppContent() {
           <Route path="/register" element={<RegisterIP />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/portfolio" element={<Portfolio />} />
-          <Route path="/staking" element={<Staking />} />
           <Route path="/cross-chain" element={<CrossChain />} />
-          <Route path="/ai-agents" element={<AIAgents />} />
           <Route path="/community" element={<Community />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />

@@ -3,8 +3,29 @@ import { useAccount } from 'wagmi'
 import type { Address } from 'viem'
 import { DeBridgeService, type DeBridgeChain, type DeBridgeQuote, type DeBridgeSwapParams } from '../services/deBridgeService'
 import { useAppStore } from '../store/appStore'
-import { PaymentStatus } from '../types/global'
 import toast from 'react-hot-toast'
+
+// Define PaymentStatus locally if not available
+enum PaymentStatus {
+  PENDING = 'pending',
+  CONFIRMED = 'confirmed',
+  FAILED = 'failed',
+  CANCELLED = 'cancelled'
+}
+
+// Local cross-chain payment type
+interface CrossChainPayment {
+  id: string
+  txHash: string
+  status: PaymentStatus
+  amount: string
+  fromChain: number
+  toChain: number
+  fromToken: string
+  toToken: string
+  timestamp: Date
+  metadata?: any
+}
 
 export function useDeBridge() {
   const { address, isConnected } = useAccount()
@@ -12,13 +33,8 @@ export function useDeBridge() {
   const [supportedChains, setSupportedChains] = useState<DeBridgeChain[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
   const [initError, setInitError] = useState<string | null>(null)
-  const { 
-    setLoading, 
-    setError, 
-    crossChainPayments, 
-    addCrossChainPayment, 
-    updateCrossChainPayment 
-  } = useAppStore()
+  const [crossChainPayments, setCrossChainPayments] = useState<CrossChainPayment[]>([])
+  const { setLoading, setError } = useAppStore()
 
   // Initialize deBridge service
   useEffect(() => {
@@ -52,6 +68,27 @@ export function useDeBridge() {
 
     initialize()
   }, [deBridgeService, setLoading, setError])
+
+  // Local payment management functions
+  const addCrossChainPayment = useCallback((payment: Omit<CrossChainPayment, 'id' | 'timestamp'>) => {
+    const newPayment: CrossChainPayment = {
+      ...payment,
+      id: Date.now().toString(),
+      timestamp: new Date(),
+    }
+    setCrossChainPayments(prev => [...prev, newPayment])
+    return newPayment
+  }, [])
+
+  const updateCrossChainPayment = useCallback((txHash: string, updates: Partial<CrossChainPayment>) => {
+    setCrossChainPayments(prev => 
+      prev.map(payment => 
+        payment.txHash === txHash 
+          ? { ...payment, ...updates }
+          : payment
+      )
+    )
+  }, [])
 
   // Get quote for cross-chain transfer
   const getQuote = useCallback(async (params: {
@@ -89,7 +126,17 @@ export function useDeBridge() {
     try {
       // Create a payment record for tracking
       const paymentRecord = deBridgeService.createPaymentRecord(params)
-      addCrossChainPayment(paymentRecord)
+      const crossChainPayment: Omit<CrossChainPayment, 'id' | 'timestamp'> = {
+        txHash: paymentRecord.txHash || `temp_${Date.now()}`,
+        status: PaymentStatus.PENDING,
+        amount: params.amount,
+        fromChain: params.inputChain,
+        toChain: params.outputChain,
+        fromToken: params.inputCurrency,
+        toToken: params.outputCurrency,
+        metadata: paymentRecord.metadata,
+      }
+      addCrossChainPayment(crossChainPayment)
       
       // Open deBridge interface
       deBridgeService.openDeBridge(params)
@@ -163,8 +210,17 @@ export function useDeBridge() {
 
       // Track the payment
       const paymentRecord = deBridgeService.createPaymentRecord(swapParams)
-      paymentRecord.metadata = params.metadata
-      addCrossChainPayment(paymentRecord)
+      const crossChainPayment: Omit<CrossChainPayment, 'id' | 'timestamp'> = {
+        txHash: paymentRecord.txHash || `ai_payment_${Date.now()}`,
+        status: PaymentStatus.PENDING,
+        amount: params.amount.toString(),
+        fromChain: params.sourceChain,
+        toChain: params.targetChain,
+        fromToken: params.token,
+        toToken: params.token,
+        metadata: { ...paymentRecord.metadata, ...params.metadata, serviceId: params.serviceId },
+      }
+      addCrossChainPayment(crossChainPayment)
 
       // Open deBridge for payment
       deBridgeService.openDeBridge(swapParams)
@@ -292,5 +348,7 @@ export function useDeBridge() {
     getChainName,
     buildDeBridgeUrl,
     updatePaymentStatus,
+    addCrossChainPayment,
+    updateCrossChainPayment,
   }
 }

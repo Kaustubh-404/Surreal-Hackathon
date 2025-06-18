@@ -188,8 +188,8 @@ export default function Dashboard() {
           </div>
           <div className="mt-4 flex items-center text-sm">
             <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-            <span className="text-green-600 font-medium">+8.2%</span>
-            <span className="text-gray-500 ml-1">APY</span>
+            <span className="text-green-600 font-medium">STAKE</span>
+            
           </div>
         </motion.div>
 

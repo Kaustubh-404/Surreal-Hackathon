@@ -103,6 +103,7 @@ export interface Report {
 }
 
 export interface Reward {
+  createdAt: any
   id: string
   type: 'validation' | 'reporting' | 'staking' | 'referral' | 'bonus'
   amount: bigint

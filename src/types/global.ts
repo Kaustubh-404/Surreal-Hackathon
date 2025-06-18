@@ -37,6 +37,7 @@ export interface LicenseTerms {
 }
 
 export interface IPReport {
+  evidence: any
   id: string
   reporterAddress: Address
   reportedIPId: string
@@ -79,6 +80,8 @@ export interface CrossChainData {
 }
 
 export interface CrossChainPayment {
+
+  metadata: any
   txHash: string
   sourceChain: string
   targetChain: string
