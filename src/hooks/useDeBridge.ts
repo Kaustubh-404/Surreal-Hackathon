@@ -11,6 +11,7 @@ export function useDeBridge() {
   const [deBridgeService] = useState(() => new DeBridgeService())
   const [supportedChains, setSupportedChains] = useState<DeBridgeChain[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
+  const [initError, setInitError] = useState<string | null>(null)
   const { 
     setLoading, 
     setError, 
@@ -24,13 +25,26 @@ export function useDeBridge() {
     async function initialize() {
       try {
         setLoading(true)
+        setInitError(null)
+        
         const chains = await deBridgeService.getSupportedChains()
         setSupportedChains(chains)
         setIsInitialized(true)
         setError(null)
       } catch (error) {
         console.error('Failed to initialize deBridge:', error)
-        setError('Failed to initialize cross-chain service')
+        const errorMessage = error instanceof Error ? error.message : 'Failed to initialize cross-chain service'
+        setInitError(errorMessage)
+        setError(errorMessage)
+        
+        // Set basic initialization even if API fails
+        setSupportedChains([
+          { id: 1, name: 'Ethereum', symbol: 'ETH', nativeToken: '0x0000000000000000000000000000000000000000', supported: true },
+          { id: 137, name: 'Polygon', symbol: 'MATIC', nativeToken: '0x0000000000000000000000000000000000000000', supported: true },
+          { id: 56, name: 'BSC', symbol: 'BNB', nativeToken: '0x0000000000000000000000000000000000000000', supported: true },
+          { id: 1315, name: 'Story Aeneid', symbol: 'IP', nativeToken: '0x0000000000000000000000000000000000000000', supported: true },
+        ])
+        setIsInitialized(true) // Allow basic functionality even with errors
       } finally {
         setLoading(false)
       }
@@ -48,7 +62,9 @@ export function useDeBridge() {
     amount: string
   }): Promise<DeBridgeQuote | null> => {
     if (!isInitialized) {
-      throw new Error('deBridge service not initialized')
+      const errorMsg = initError || 'deBridge service not initialized'
+      toast.error(errorMsg)
+      throw new Error(errorMsg)
     }
 
     try {
@@ -56,15 +72,17 @@ export function useDeBridge() {
       return quote
     } catch (error) {
       console.error('Failed to get quote:', error)
-      toast.error('Failed to get cross-chain quote')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get cross-chain quote'
+      toast.error(errorMessage)
       return null
     }
-  }, [deBridgeService, isInitialized])
+  }, [deBridgeService, isInitialized, initError])
 
   // Open deBridge interface for cross-chain swap
   const openDeBridgeSwap = useCallback((params: DeBridgeSwapParams) => {
     if (!isInitialized) {
-      toast.error('deBridge service not initialized')
+      const errorMsg = initError || 'deBridge service not initialized'
+      toast.error(errorMsg)
       return
     }
 
@@ -79,9 +97,10 @@ export function useDeBridge() {
       toast.success('Opening deBridge interface...')
     } catch (error) {
       console.error('Failed to open deBridge:', error)
-      toast.error('Failed to open deBridge interface')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to open deBridge interface'
+      toast.error(errorMessage)
     }
-  }, [deBridgeService, isInitialized, addCrossChainPayment])
+  }, [deBridgeService, isInitialized, addCrossChainPayment, initError])
 
   // Claim rewards with deBridge
   const claimWithDeBridge = useCallback((params: {
@@ -92,6 +111,12 @@ export function useDeBridge() {
     amount: string
     userAddress: string
   }) => {
+    if (!isInitialized) {
+      const errorMsg = initError || 'deBridge service not initialized'
+      toast.error(errorMsg)
+      return
+    }
+
     const swapParams: DeBridgeSwapParams = {
       inputChain: params.fromChain,
       inputCurrency: params.fromToken,
@@ -102,71 +127,163 @@ export function useDeBridge() {
     }
 
     openDeBridgeSwap(swapParams)
-  }, [openDeBridgeSwap])
+  }, [openDeBridgeSwap, isInitialized, initError])
+
+  // Pay AI agent service with cross-chain
+  const payAIAgentService = useCallback(async (params: {
+    agentAddress: Address
+    serviceId: string
+    amount: bigint
+    token: Address
+    sourceChain: number
+    targetChain: number
+    metadata: any
+  }) => {
+    if (!isInitialized) {
+      const errorMsg = initError || 'deBridge service not initialized'
+      toast.error(errorMsg)
+      throw new Error(errorMsg)
+    }
+
+    if (!isConnected || !address) {
+      toast.error('Please connect your wallet')
+      throw new Error('Wallet not connected')
+    }
+
+    try {
+      // Create cross-chain payment for AI service
+      const swapParams: DeBridgeSwapParams = {
+        inputChain: params.sourceChain,
+        inputCurrency: params.token,
+        outputChain: params.targetChain,
+        outputCurrency: params.token,
+        address: params.agentAddress,
+        amount: params.amount.toString(),
+      }
+
+      // Track the payment
+      const paymentRecord = deBridgeService.createPaymentRecord(swapParams)
+      paymentRecord.metadata = params.metadata
+      addCrossChainPayment(paymentRecord)
+
+      // Open deBridge for payment
+      deBridgeService.openDeBridge(swapParams)
+      
+      toast.success('Processing AI agent payment...')
+    } catch (error) {
+      console.error('Failed to pay AI agent:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process AI agent payment'
+      toast.error(errorMessage)
+      throw error
+    }
+  }, [deBridgeService, isInitialized, isConnected, address, addCrossChainPayment, initError])
 
   // Get token address for a chain and symbol
   const getTokenAddress = useCallback((chainId: number, symbol: string): string => {
-    return deBridgeService.getTokenAddress(chainId, symbol)
+    try {
+      return deBridgeService.getTokenAddress(chainId, symbol)
+    } catch (error) {
+      console.warn('Failed to get token address:', error)
+      return '0x0000000000000000000000000000000000000000'
+    }
   }, [deBridgeService])
 
   // Get popular tokens for a chain
   const getPopularTokens = useCallback((chainId: number) => {
-    return deBridgeService.getPopularTokens(chainId)
+    try {
+      return deBridgeService.getPopularTokens(chainId)
+    } catch (error) {
+      console.warn('Failed to get popular tokens:', error)
+      return [{ symbol: 'NATIVE', address: '0x0000000000000000000000000000000000000000', name: 'Native Token' }]
+    }
   }, [deBridgeService])
 
   // Check if chain/token is supported
   const isSupported = useCallback((chainId: number, tokenAddress?: string): boolean => {
-    return deBridgeService.isSupported(chainId, tokenAddress)
-  }, [deBridgeService])
+    try {
+      return deBridgeService.isSupported(chainId, tokenAddress)
+    } catch (error) {
+      console.warn('Failed to check support:', error)
+      return supportedChains.some(chain => chain.id === chainId)
+    }
+  }, [deBridgeService, supportedChains])
 
   // Format amount for deBridge
   const formatAmount = useCallback((amount: string, decimals: number = 18): string => {
-    return deBridgeService.formatAmount(amount, decimals)
+    try {
+      return deBridgeService.formatAmount(amount, decimals)
+    } catch (error) {
+      console.warn('Failed to format amount:', error)
+      const num = parseFloat(amount)
+      return (num * Math.pow(10, decimals)).toString()
+    }
   }, [deBridgeService])
 
   // Parse amount from wei
   const parseAmount = useCallback((amount: string, decimals: number = 18): string => {
-    return deBridgeService.parseAmount(amount, decimals)
+    try {
+      return deBridgeService.parseAmount(amount, decimals)
+    } catch (error) {
+      console.warn('Failed to parse amount:', error)
+      const num = parseFloat(amount)
+      return (num / Math.pow(10, decimals)).toFixed(6)
+    }
   }, [deBridgeService])
 
   // Get chain name
   const getChainName = useCallback((chainId: number): string => {
-    return deBridgeService.getChainName(chainId)
-  }, [deBridgeService])
+    try {
+      return deBridgeService.getChainName(chainId)
+    } catch (error) {
+      const chain = supportedChains.find(c => c.id === chainId)
+      return chain?.name || `Chain ${chainId}`
+    }
+  }, [deBridgeService, supportedChains])
 
   // Build deBridge URL (for preview or sharing)
   const buildDeBridgeUrl = useCallback((params: DeBridgeSwapParams): string => {
-    return deBridgeService.buildDeBridgeUrl(params)
+    try {
+      return deBridgeService.buildDeBridgeUrl(params)
+    } catch (error) {
+      console.warn('Failed to build URL:', error)
+      return `https://app.debridge.finance/deswap?inputChain=${params.inputChain}&outputChain=${params.outputChain}`
+    }
   }, [deBridgeService])
 
   // Update payment status (manual update since we don't have API)
   const updatePaymentStatus = useCallback((txHash: string, status: PaymentStatus) => {
-    updateCrossChainPayment(txHash, { status })
-    
-    const statusMessage = {
-      [PaymentStatus.CONFIRMED]: 'Transaction confirmed!',
-      [PaymentStatus.FAILED]: 'Transaction failed',
-      [PaymentStatus.CANCELLED]: 'Transaction cancelled',
-      [PaymentStatus.PENDING]: 'Transaction pending...',
-    }[status]
+    try {
+      updateCrossChainPayment(txHash, { status })
+      
+      const statusMessage = {
+        [PaymentStatus.CONFIRMED]: 'Transaction confirmed!',
+        [PaymentStatus.FAILED]: 'Transaction failed',
+        [PaymentStatus.CANCELLED]: 'Transaction cancelled',
+        [PaymentStatus.PENDING]: 'Transaction pending...',
+      }[status]
 
-    if (statusMessage && status !== PaymentStatus.PENDING) {
-      if (status === PaymentStatus.CONFIRMED) {
-        toast.success(statusMessage)
-      } else {
-        toast.error(statusMessage)
+      if (statusMessage && status !== PaymentStatus.PENDING) {
+        if (status === PaymentStatus.CONFIRMED) {
+          toast.success(statusMessage)
+        } else {
+          toast.error(statusMessage)
+        }
       }
+    } catch (error) {
+      console.error('Failed to update payment status:', error)
     }
   }, [updateCrossChainPayment])
 
   return {
     isInitialized,
     isConnected,
+    initError,
     supportedChains,
     crossChainPayments,
     getQuote,
     openDeBridgeSwap,
     claimWithDeBridge,
+    payAIAgentService,
     getTokenAddress,
     getPopularTokens,
     isSupported,

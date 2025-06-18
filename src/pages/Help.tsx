@@ -147,17 +147,18 @@ export default function Help() {
         
         {/* Search Bar */}
         <div className="max-w-2xl mx-auto">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
-            <input
-              type="text"
-              placeholder="Search for help articles, FAQs, and guides..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input pl-12 pr-4 py-4 w-full text-lg"
-            />
-          </div>
-        </div>
+  <div className="relative">
+    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
+    <input
+      type="text"
+      placeholder="Search for help articles, FAQs, and guides..."
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      className="pl-14 pr-4 py-4 w-full text-lg border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+    />
+  </div>
+</div>
+
       </motion.div>
 
       {/* Quick Links */}

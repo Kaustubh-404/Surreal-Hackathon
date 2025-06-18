@@ -17,7 +17,6 @@ import {
   CheckCircle
 } from 'lucide-react'
 import { useAccount } from 'wagmi'
-import { parseEther } from 'viem'
 import { useDeBridge } from '../hooks/useDeBridge'
 import { formatEther, formatNumber } from '../utils/formatters'
 import toast from 'react-hot-toast'
@@ -228,7 +227,7 @@ export default function AIAgents() {
                 placeholder="Search AI agents..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="input pl-10 w-full"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>

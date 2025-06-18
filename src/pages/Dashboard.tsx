@@ -110,26 +110,26 @@ export default function Dashboard() {
       className="space-y-8"
     >
       {/* Welcome Section */}
-      <motion.div variants={cardVariants} className="bg-gradient-to-r from-primary-500 to-secondary-500 rounded-2xl p-8 text-white">
+      <motion.div variants={cardVariants} className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white shadow-lg">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">
+            <h1 className="text-3xl font-bold mb-2 text-white">
               Welcome to IP Guardian
             </h1>
-            <p className="text-primary-100 text-lg">
+            <p className="text-blue-100 text-lg mb-4">
               {isConnected 
                 ? `Welcome back, ${user?.username || formatAddress(address)}!`
                 : 'Connect your wallet to start protecting your intellectual property'
               }
             </p>
-            <div className="flex items-center space-x-4 mt-4">
+            <div className="flex items-center space-x-6 mt-4">
               <div className="flex items-center space-x-2">
-                <div className={`w-3 h-3 rounded-full ${storyInitialized ? 'bg-success-400' : 'bg-error-400'}`} />
-                <span className="text-sm">Story Protocol</span>
+                <div className={`w-3 h-3 rounded-full ${storyInitialized ? 'bg-green-400' : 'bg-red-400'}`} />
+                <span className="text-sm text-white font-medium">Story Protocol</span>
               </div>
               <div className="flex items-center space-x-2">
-                <div className={`w-3 h-3 rounded-full ${deBridgeInitialized ? 'bg-success-400' : 'bg-error-400'}`} />
-                <span className="text-sm">deBridge Network</span>
+                <div className={`w-3 h-3 rounded-full ${deBridgeInitialized ? 'bg-green-400' : 'bg-red-400'}`} />
+                <span className="text-sm text-white font-medium">deBridge Network</span>
               </div>
             </div>
           </div>

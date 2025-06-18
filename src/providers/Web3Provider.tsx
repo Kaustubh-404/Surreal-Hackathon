@@ -24,16 +24,31 @@ export default function Web3Providers({ children }: Web3ProvidersProps) {
     
     if (!envValidation.isValid) {
       console.error('Missing required environment variables:', envValidation.missingVars)
-      throw new Error(`Missing required environment variables: ${envValidation.missingVars.join(', ')}`)
+      // Don't throw error in development, just log it
+      if (import.meta.env.PROD) {
+        throw new Error(`Missing required environment variables: ${envValidation.missingVars.join(', ')}`)
+      }
     }
 
-    return getDefaultConfig({
-      appName: ENV.APP_NAME,
-      clientId: ENV.TOMO_CLIENT_ID!,
-      projectId: ENV.WALLET_CONNECT_PROJECT_ID!,
-      chains: [CHAIN_CONFIG.aeneid as any],
-      ssr: false,
-    })
+    try {
+      return getDefaultConfig({
+        appName: ENV.APP_NAME,
+        clientId: ENV.TOMO_CLIENT_ID || 'demo-client-id',
+        projectId: ENV.WALLET_CONNECT_PROJECT_ID || 'demo-project-id',
+        chains: [CHAIN_CONFIG.aeneid as any],
+        ssr: false,
+      })
+    } catch (error) {
+      console.error('Failed to create Wagmi config:', error)
+      // Return a minimal config for development
+      return getDefaultConfig({
+        appName: 'IP Guardian Platform',
+        clientId: 'demo-client-id',
+        projectId: 'demo-project-id',
+        chains: [CHAIN_CONFIG.aeneid as any],
+        ssr: false,
+      })
+    }
   }, [])
 
   return (
