@@ -1,12 +1,41 @@
-// src/config/storyClient.ts - Fixed version
+// src/config/storyClient.ts
 import { StoryClient, type StoryConfig } from '@story-protocol/core-sdk'
-import { custom, http, createPublicClient } from 'viem'
+import { http, createWalletClient, createPublicClient } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { ENV } from './env'
-import type { WalletClient } from 'viem'
+
+// Define the Story Aeneid testnet chain
+export const storyAeneidTestnet = {
+  id: 1315,
+  name: 'Story Aeneid Testnet',
+  network: 'story-aeneid',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'IP',
+    symbol: 'IP',
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://aeneid.storyrpc.io'],
+    },
+    public: {
+      http: ['https://aeneid.storyrpc.io'],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: 'Story Aeneid Explorer',
+      url: 'https://aeneid.explorer.story.foundation',
+    },
+  },
+  testnet: true,
+} as const
 
 export class StoryClientManager {
   private static instance: StoryClientManager
   private client: StoryClient | null = null
+  private publicClient: any = null
+  private walletClient: any = null
 
   private constructor() {}
 
@@ -17,45 +46,68 @@ export class StoryClientManager {
     return StoryClientManager.instance
   }
 
-  public async initializeWithWallet(walletClient: WalletClient): Promise<StoryClient> {
-    if (!walletClient) {
-      throw new Error('Wallet client is required to initialize Story client')
-    }
-
+  public async initializeWithWallet(externalWalletClient?: any): Promise<StoryClient> {
     try {
+      if (!ENV.RPC_PROVIDER_URL) {
+        throw new Error('RPC_PROVIDER_URL is not configured')
+      }
+
+      let account
+      const transport = http(ENV.RPC_PROVIDER_URL) // Always use http transport
+
+      if (externalWalletClient) {
+        // Use the account from the external wallet client (e.g., wagmi)
+        account = externalWalletClient.account
+        if (!account) {
+          throw new Error('No account found in external wallet client')
+        }
+      } else if (ENV.WALLET_PRIVATE_KEY) {
+        // Use private key for backend operations
+        account = privateKeyToAccount(`0x${ENV.WALLET_PRIVATE_KEY}` as `0x${string}`)
+      } else {
+        throw new Error('No wallet or private key available')
+      }
+
       const config: StoryConfig = {
-        wallet: walletClient,
-        transport: custom(walletClient.transport),
-        chainId: ENV.STORY_CHAIN_ID as 'aeneid',
+        account,
+        transport,
+        chainId: 'aeneid',
       }
 
       this.client = StoryClient.newClient(config)
+      console.log('Story client initialized successfully')
       return this.client
     } catch (error) {
       console.error('Failed to initialize Story client:', error)
-      throw new Error('Failed to initialize Story client')
+      throw new Error(`Failed to initialize Story client: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
-  // Simplified HTTP initialization - for read-only operations only
-  public async initializeWithHttp(): Promise<StoryClient> {
-    try {
-      // Don't initialize with HTTP for now to avoid the layout error
-      // The SDK seems to have issues with HTTP-only mode
-      console.warn('HTTP-only mode disabled due to SDK compatibility issues')
-      throw new Error('HTTP-only mode not supported - wallet required')
-    } catch (error) {
-      console.error('Failed to initialize Story client with HTTP:', error)
-      throw new Error('Failed to initialize Story client')
+  public async initializePublicClient(): Promise<any> {
+    if (!this.publicClient) {
+      if (!ENV.RPC_PROVIDER_URL) {
+        throw new Error('RPC_PROVIDER_URL is not configured')
+      }
+      this.publicClient = createPublicClient({
+        chain: storyAeneidTestnet,
+        transport: http(ENV.RPC_PROVIDER_URL),
+      })
     }
+    return this.publicClient
   }
 
   public getClient(): StoryClient | null {
     return this.client
   }
 
+  public getPublicClient(): any {
+    return this.publicClient
+  }
+
   public reset(): void {
     this.client = null
+    this.publicClient = null
+    this.walletClient = null
   }
 }
 

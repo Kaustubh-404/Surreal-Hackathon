@@ -12,7 +12,6 @@ import {
   Zap,
   Globe,
   Award,
-  Bot
 } from 'lucide-react'
 
 const navigation = [
@@ -35,10 +34,22 @@ const navigation = [
     description: 'Protect your intellectual property'
   },
   { 
+    name: 'Reports', 
+    href: '/reports', 
+    icon: FileText,
+    description: 'Submit and review violation reports'
+  },
+  { 
     name: 'My Portfolio', 
     href: '/portfolio', 
     icon: Award,
     description: 'Your IP assets and licenses'
+  },
+  { 
+    name: 'Cross-Chain', 
+    href: '/cross-chain', 
+    icon: Globe,
+    description: 'Multi-chain payments and royalties'
   },
 ]
 
