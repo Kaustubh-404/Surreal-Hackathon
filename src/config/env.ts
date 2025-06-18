@@ -2,7 +2,8 @@
 export const ENV = {
   // Story Network
   RPC_PROVIDER_URL: import.meta.env.VITE_RPC_PROVIDER_URL || 'https://aeneid.storyrpc.io',
-  STORY_CHAIN_ID: import.meta.env.VITE_STORY_CHAIN_ID || '1315',
+  STORY_CHAIN_ID: import.meta.env.VITE_STORY_CHAIN_ID || 'aeneid',
+  WALLET_PRIVATE_KEY: import.meta.env.VITE_WALLET_PRIVATE_KEY,
   
   // Tomo SDK - Use fallback values for demo
   TOMO_CLIENT_ID: import.meta.env.VITE_TOMO_CLIENT_ID || 'demo_client_id',

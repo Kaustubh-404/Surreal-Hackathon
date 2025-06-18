@@ -1,9 +1,7 @@
 import { aeneid, mainnet, StoryClient, type StoryConfig } from '@story-protocol/core-sdk'
 import { type Chain, createPublicClient, createWalletClient, http, type WalletClient } from 'viem'
 import { privateKeyToAccount, type Address, type Account } from 'viem/accounts'
-import dotenv from 'dotenv'
-
-dotenv.config()
+import { ENV } from '../config/env'
 
 // Network configuration types
 type NetworkType = 'aeneid' | 'mainnet'
@@ -38,7 +36,7 @@ const networkConfigs: Record<NetworkType, NetworkConfig> = {
 } as const
 
 const getNetwork = (): NetworkType => {
-    const network = process.env.STORY_NETWORK as NetworkType
+    const network = ENV.STORY_CHAIN_ID as NetworkType
     if (network && !(network in networkConfigs)) {
         throw new Error(`Invalid network: ${network}. Must be one of: ${Object.keys(networkConfigs).join(', ')}`)
     }
@@ -50,10 +48,10 @@ export const network = getNetwork()
 
 export const networkInfo = {
     ...networkConfigs[network],
-    rpcProviderUrl: process.env.RPC_PROVIDER_URL || networkConfigs[network].rpcProviderUrl,
+    rpcProviderUrl: ENV.RPC_PROVIDER_URL || networkConfigs[network].rpcProviderUrl,
 }
 
-export const account: Account = privateKeyToAccount(`0x${process.env.WALLET_PRIVATE_KEY}` as Address)
+export const account: Account = privateKeyToAccount(`0x${ENV.WALLET_PRIVATE_KEY}` as Address)
 
 const config: StoryConfig = {
     account,

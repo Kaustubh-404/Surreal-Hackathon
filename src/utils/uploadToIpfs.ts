@@ -6,7 +6,7 @@ export async function uploadJSONToIPFS(jsonMetadata: any): Promise<string> {
     const options = {
         method: 'POST',
         headers: {
-            Authorization: `Bearer ${process.env.PINATA_JWT}`,
+            Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI4MmUzNjU1OS0wMjllLTQ5OTctYmJlOS02NDAxMGNhNzY2YWYiLCJlbWFpbCI6Im9ta2FyamFkaGF2MjEwM0BnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJpZCI6IkZSQTEiLCJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MX0seyJpZCI6Ik5ZQzEiLCJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MX1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiM2Y1OTcyOGU1MjRhNjQ4ZDQ0OTkiLCJzY29wZWRLZXlTZWNyZXQiOiJiYTk4NDQ3MjAyOGM1MzI5NjU0MDZlMGI2YjA0YWJiZTZkODlhOWQzODA5ZWQ1YTc3M2NjNjRlOWQ1MmQ0ZWEwIiwiaWF0IjoxNjk1Mjk2NTQyfQ`,
             'Content-Type': 'application/json',
         },
         data: {
@@ -34,7 +34,7 @@ export async function uploadTextToIPFS(text: string): Promise<string> {
     const options = {
         method: 'POST',
         headers: {
-            Authorization: `Bearer ${process.env.PINATA_JWT}`,
+            Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI4MmUzNjU1OS0wMjllLTQ5OTctYmJlOS02NDAxMGNhNzY2YWYiLCJlbWFpbCI6Im9ta2FyamFkaGF2MjEwM0BnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJpZCI6IkZSQTEiLCJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MX0seyJpZCI6Ik5ZQzEiLCJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MX1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiM2Y1OTcyOGU1MjRhNjQ4ZDQ0OTkiLCJzY29wZWRLZXlTZWNyZXQiOiJiYTk4NDQ3MjAyOGM1MzI5NjU0MDZlMGI2YjA0YWJiZTZkODlhOWQzODA5ZWQ1YTc3M2NjNjRlOWQ1MmQ0ZWEwIiwiaWF0IjoxNjk1Mjk2NTQyfQ`,
             ...data.getHeaders(),
         },
         data: data,
