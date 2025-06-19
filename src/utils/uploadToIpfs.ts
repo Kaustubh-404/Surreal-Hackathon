@@ -1,50 +1,149 @@
-import axios from 'axios'
-import FormData from 'form-data'
 
-export async function uploadJSONToIPFS(jsonMetadata: any): Promise<string> {
-    const url = 'https://api.pinata.cloud/pinning/pinJSONToIPFS'
-    const options = {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI4MmUzNjU1OS0wMjllLTQ5OTctYmJlOS02NDAxMGNhNzY2YWYiLCJlbWFpbCI6Im9ta2FyamFkaGF2MjEwM0BnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJpZCI6IkZSQTEiLCJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MX0seyJpZCI6Ik5ZQzEiLCJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MX1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiM2Y1OTcyOGU1MjRhNjQ4ZDQ0OTkiLCJzY29wZWRLZXlTZWNyZXQiOiJiYTk4NDQ3MjAyOGM1MzI5NjU0MDZlMGI2YjA0YWJiZTZkODlhOWQzODA5ZWQ1YTc3M2NjNjRlOWQ1MmQ0ZWEwIiwiaWF0IjoxNjk1Mjk2NTQyfQ`,
-            'Content-Type': 'application/json',
-        },
-        data: {
-            pinataOptions: { cidVersion: 0 },
-            pinataMetadata: { name: 'ip-metadata.json' },
-            pinataContent: jsonMetadata,
-        },
-    }
+import axios from 'axios';
+import { ENV } from '../config/env';
 
-    try {
-        const response = await axios(url, options)
-        return response.data.IpfsHash
-    } catch (error) {
-        console.error('Error uploading JSON to IPFS:', error)
-        throw error
-    }
+interface IPMetadata {
+  name: string;
+  description: string;
+  imageHash?: string;
+  attributes: Array<{ trait_type: string; value: string }>;
 }
 
-export async function uploadTextToIPFS(text: string): Promise<string> {
-    const url = 'https://api.pinata.cloud/pinning/pinFileToIPFS'
-    const data = new FormData()
-    const buffer = Buffer.from(text, 'utf-8')
-    data.append('file', buffer, { filename: 'dispute-evidence.txt', contentType: 'text/plain' })
-
-    const options = {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI4MmUzNjU1OS0wMjllLTQ5OTctYmJlOS02NDAxMGNhNzY2YWYiLCJlbWFpbCI6Im9ta2FyamFkaGF2MjEwM0BnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGluX3BvbGljeSI6eyJyZWdpb25zIjpbeyJpZCI6IkZSQTEiLCJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MX0seyJpZCI6Ik5ZQzEiLCJkZXNpcmVkUmVwbGljYXRpb25Db3VudCI6MX1dLCJ2ZXJzaW9uIjoxfSwibWZhX2VuYWJsZWQiOmZhbHNlLCJzdGF0dXMiOiJBQ1RJVkUifSwiYXV0aGVudGljYXRpb25UeXBlIjoic2NvcGVkS2V5Iiwic2NvcGVkS2V5S2V5IjoiM2Y1OTcyOGU1MjRhNjQ4ZDQ0OTkiLCJzY29wZWRLZXlTZWNyZXQiOiJiYTk4NDQ3MjAyOGM1MzI5NjU0MDZlMGI2YjA0YWJiZTZkODlhOWQzODA5ZWQ1YTc3M2NjNjRlOWQ1MmQ0ZWEwIiwiaWF0IjoxNjk1Mjk2NTQyfQ`,
-            ...data.getHeaders(),
-        },
-        data: data,
-    }
-
-    try {
-        const response = await axios(url, options)
-        return response.data.IpfsHash
-    } catch (error) {
-        console.error('Error uploading text to IPFS:', error)
-        throw error
-    }
+interface PinataPinResponse {
+  IpfsHash: string;
+  PinSize: number;
+  Timestamp: string;
 }
+
+export const uploadImageToIPFS = async (file: File): Promise<string> => {
+  if (!ENV.PINATA_JWT) {
+    throw new Error('Pinata JWT is not configured. Please set VITE_PINATA_JWT in your environment variables.');
+  }
+
+  if (!ENV.PINATA_JWT.startsWith('eyJ') || ENV.PINATA_JWT.length < 100) {
+    throw new Error('Invalid Pinata JWT format. Please verify VITE_PINATA_JWT.');
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await axios.post<PinataPinResponse>(
+      'https://api.pinata.cloud/pinning/pinFileToIPFS',
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${ENV.PINATA_JWT}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+
+    return response.data.IpfsHash;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+      console.error('Error uploading file to IPFS:', error.message);
+      console.error('Response data:', errorData);
+      console.error('Response status:', status);
+      const errorMessage =
+        status === 401
+          ? 'Unauthorized - Invalid or expired Pinata JWT. Please verify VITE_PINATA_JWT.'
+          : error.message;
+      throw new Error(`Failed to upload file to IPFS: ${errorMessage}`);
+    }
+    throw new Error('Failed to upload file to IPFS: Unknown error');
+  }
+};
+
+export const uploadJSONToIPFS = async (jsonData: object): Promise<string> => {
+  if (!ENV.PINATA_JWT) {
+    throw new Error('Pinata JWT is not configured. Please set VITE_PINATA_JWT in your environment variables.');
+  }
+
+  if (!ENV.PINATA_JWT.startsWith('eyJ') || ENV.PINATA_JWT.length < 100) {
+    throw new Error('Invalid Pinata JWT format. Please verify VITE_PINATA_JWT.');
+  }
+
+  try {
+    const response = await axios.post<PinataPinResponse>(
+      'https://api.pinata.cloud/pinning/pinJSONToIPFS',
+      jsonData,
+      {
+        headers: {
+          Authorization: `Bearer ${ENV.PINATA_JWT}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    return response.data.IpfsHash;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+      console.error('Error uploading JSON to IPFS:', error.message);
+      console.error('Response data:', errorData);
+      console.error('Response status:', status);
+      const errorMessage =
+        status === 401
+          ? 'Unauthorized - Invalid or expired Pinata JWT. Please verify VITE_PINATA_JWT.'
+          : error.message;
+      throw new Error(`Failed to upload JSON to IPFS: ${errorMessage}`);
+    }
+    throw new Error('Failed to upload JSON to IPFS: Unknown error');
+  }
+};
+
+export const uploadTextToIPFS = async (text: string): Promise<string> => {
+  if (!ENV.PINATA_JWT) {
+    throw new Error('Pinata JWT is not configured. Please set VITE_PINATA_JWT in your environment variables.');
+  }
+
+  if (!ENV.PINATA_JWT.startsWith('eyJ') || ENV.PINATA_JWT.length < 100) {
+    throw new Error('Invalid Pinata JWT format. Please verify VITE_PINATA_JWT.');
+  }
+
+  try {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const formData = new FormData();
+    formData.append('file', blob, 'evidence.txt');
+
+    const response = await axios.post<PinataPinResponse>(
+      'https://api.pinata.cloud/pinning/pinFileToIPFS',
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${ENV.PINATA_JWT}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+
+    return response.data.IpfsHash;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const errorData = error.response?.data;
+      console.error('Error uploading text to IPFS:', error.message);
+      console.error('Response data:', errorData);
+      console.error('Response status:', status);
+      const errorMessage =
+        status === 401
+          ? 'Unauthorized - Invalid or expired Pinata JWT. Please verify VITE_PINATA_JWT.'
+          : error.message;
+      throw new Error(`Failed to upload text to IPFS: ${errorMessage}`);
+    }
+    throw new Error('Failed to upload text to IPFS: Unknown error');
+  }
+};
+
+export const createIPMetadata = (metadata: IPMetadata): IPMetadata => {
+  return {
+    name: metadata.name,
+    description: metadata.description,
+    imageHash: metadata.imageHash,
+    attributes: metadata.attributes,
+  };
+};

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useConnectModal, useAccountModal } from '@tomo-inc/tomo-evm-kit'
-import { useAccount } from 'wagmi'
+import { useAccount, useDisconnect } from 'wagmi'
+import { useNavigate } from 'react-router-dom'
 import { 
   Shield, 
   Bell, 
@@ -24,7 +25,9 @@ export default function Header() {
   const { openConnectModal } = useConnectModal()
   const { openAccountModal } = useAccountModal()
   const { address, isConnected } = useAccount()
-  const { user, rewards } = useAppStore()
+  const { disconnect } = useDisconnect()
+  const navigate = useNavigate()
+  const { user, rewards, clearUser } = useAppStore()
   const { isInitialized: storyInitialized } = useStory()
   const { isInitialized: deBridgeInitialized } = useDeBridge()
   
@@ -44,6 +47,26 @@ export default function Header() {
     if (isConnected && openAccountModal) {
       openAccountModal()
     }
+    setShowUserMenu(false)
+  }
+
+  const handleSettingsClick = () => {
+    navigate('/settings')
+    setShowUserMenu(false)
+    setShowMobileMenu(false)
+  }
+
+  const handleDisconnect = () => {
+    try {
+      disconnect()
+      clearUser()
+      setShowUserMenu(false)
+      setShowMobileMenu(false)
+      // Optional: redirect to home page after disconnect
+      navigate('/')
+    } catch (error) {
+      console.error('Error disconnecting:', error)
+    }
   }
 
   return (
@@ -54,7 +77,8 @@ export default function Header() {
           <div className="flex items-center">
             <motion.div
               whileHover={{ scale: 1.05 }}
-              className="flex items-center space-x-2"
+              className="flex items-center space-x-2 cursor-pointer"
+              onClick={() => navigate('/')}
             >
               <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg">
                 <Shield className="h-6 w-6 text-white" />
@@ -167,7 +191,7 @@ export default function Header() {
                           <span>Wallet</span>
                         </button>
                         <button
-                          onClick={() => setShowUserMenu(false)}
+                          onClick={handleSettingsClick}
                           className="flex items-center space-x-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 font-medium"
                         >
                           <Settings className="h-4 w-4" />
@@ -175,10 +199,7 @@ export default function Header() {
                         </button>
                         <hr className="my-1" />
                         <button
-                          onClick={() => {
-                            // Handle logout
-                            setShowUserMenu(false)
-                          }}
+                          onClick={handleDisconnect}
                           className="flex items-center space-x-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-medium"
                         >
                           <LogOut className="h-4 w-4" />
@@ -249,9 +270,20 @@ export default function Header() {
                       <Wallet className="h-4 w-4" />
                       <span>Wallet</span>
                     </button>
-                    <button className="flex items-center space-x-2 w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 font-medium">
+                    <button 
+                      onClick={handleSettingsClick}
+                      className="flex items-center space-x-2 w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 font-medium"
+                    >
                       <Settings className="h-4 w-4" />
                       <span>Settings</span>
+                    </button>
+                    <hr className="mx-4" />
+                    <button 
+                      onClick={handleDisconnect}
+                      className="flex items-center space-x-2 w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 font-medium"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>Disconnect</span>
                     </button>
                   </>
                 ) : (

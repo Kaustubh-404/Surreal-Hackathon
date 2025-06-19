@@ -1,582 +1,703 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { useForm } from 'react-hook-form'
-import { 
-  Upload, 
-  Shield, 
-  FileText, 
-  Tag,
-  DollarSign,
-  Zap,
-  CheckCircle,
-  AlertCircle,
-  Info
-} from 'lucide-react'
-import { useStory } from '../hooks/useStory'
-import { parseEther } from 'viem'
-import toast from 'react-hot-toast'
+import React, { useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
+import { Shield, Upload, X, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { useStory } from '../hooks/useStory';
+import { useAppStore } from '../store/appStore';
+import { uploadImageToIPFS, createIPMetadata } from '../utils/uploadToIpfs';
+import toast from 'react-hot-toast';
 
-interface RegisterForm {
-  title: string
-  description: string
-  category: string
-  tags: string
-  imageUrl: string
-  commercialUse: boolean
-  commercialRevShare: number
-  derivativesAllowed: boolean
-  transferable: boolean
-  mintingFee: string
-}
+const RegisterIP: React.FC = () => {
+  const { registerIP, isConnected, isInitialized, isLoading: storyLoading, initError } = useStory();
+  const { setLoading, setError } = useAppStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    category: 'art',
+    tags: '',
+    imageFile: null as File | null,
+    imageUrl: '',
+    commercialUse: false,
+    commercialRevShare: 0,
+    derivativesAllowed: false,
+    transferable: true,
+  });
 
-const categories = [
-  'Art & Design',
-  'Music & Audio',
-  'Writing & Literature',
-  'Photography',
-  'Video & Animation',
-  'Software & Code',
-  'Games',
-  'Research & Data',
-  'Brands & Logos',
-  'Other'
-]
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-export default function RegisterIP() {
-  const { registerIP, isInitialized, isConnected } = useStory()
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [step, setStep] = useState(1)
-  const [previewImage, setPreviewImage] = useState<string>('')
+  // Validation function
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { errors },
-  } = useForm<RegisterForm>({
-    defaultValues: {
-      commercialUse: false,
-      commercialRevShare: 0,
-      derivativesAllowed: true,
-      transferable: true,
-      mintingFee: '0',
-    },
-  })
-
-  const watchedValues = watch()
-
-  const onSubmit = async (data: RegisterForm) => {
-    if (!isConnected || !isInitialized) {
-      toast.error('Please connect your wallet first')
-      return
+    if (!formData.title.trim()) {
+      newErrors.title = 'Title is required';
+    }
+    if (!formData.description.trim()) {
+      newErrors.description = 'Description is required';
+    }
+    if (!formData.imageFile && !formData.imageUrl) {
+      newErrors.image = 'Either upload an image or provide an image URL';
+    }
+    if (formData.commercialRevShare < 0 || formData.commercialRevShare > 100) {
+      newErrors.commercialRevShare = 'Revenue share must be between 0 and 100';
     }
 
-    setIsSubmitting(true)
-    try {
-      const tags = data.tags.split(',').map(tag => tag.trim()).filter(Boolean)
-      const mintingFee = data.mintingFee ? parseEther(data.mintingFee) : undefined
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
-      await registerIP({
-        title: data.title,
-        description: data.description,
-        imageUrl: data.imageUrl,
-        category: data.category,
-        tags,
-        commercialUse: data.commercialUse,
-        commercialRevShare: data.commercialRevShare,
-        derivativesAllowed: data.derivativesAllowed,
-        transferable: data.transferable,
-        mintingFee,
-      })
-
-      toast.success('IP Asset registered successfully!')
-      // Reset form or redirect
-    } catch (error) {
-      console.error('Registration failed:', error)
-    } finally {
-      setIsSubmitting(false)
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      setFormData((prev) => ({ 
+        ...prev, 
+        [name]: (e.target as HTMLInputElement).checked 
+      }));
+    } else if (type === 'number') {
+      setFormData((prev) => ({ 
+        ...prev, 
+        [name]: parseFloat(value) || 0 
+      }));
+    } else {
+      setFormData((prev) => ({ 
+        ...prev, 
+        [name]: value 
+      }));
     }
-  }
+    
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result as string
-        setPreviewImage(result)
-        setValue('imageUrl', result)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select a valid image file');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image file must be less than 10MB');
+      return;
+    }
+
+    setFormData(prev => ({ ...prev, imageFile: file }));
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Clear image URL if file is selected
+    if (formData.imageUrl) {
+      setFormData(prev => ({ ...prev, imageUrl: '' }));
+    }
+  };
+
+  const handleImageUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const url = e.target.value;
+    setFormData(prev => ({ ...prev, imageUrl: url }));
+    
+    if (url) {
+      setImagePreview(url);
+      // Clear file if URL is provided
+      if (formData.imageFile) {
+        setFormData(prev => ({ ...prev, imageFile: null }));
       }
-      reader.readAsDataURL(file)
+    } else {
+      setImagePreview(null);
     }
-  }
+  };
 
-  const steps = [
-    { id: 1, name: 'Basic Info', description: 'Title, description, and category' },
-    { id: 2, name: 'Content', description: 'Upload your intellectual property' },
-    { id: 3, name: 'License Terms', description: 'Configure usage permissions' },
-    { id: 4, name: 'Review', description: 'Review and submit' },
-  ]
+  const clearImage = () => {
+    setFormData(prev => ({ 
+      ...prev, 
+      imageFile: null, 
+      imageUrl: '' 
+    }));
+    setImagePreview(null);
+  };
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validate form
+    if (!validateForm()) {
+      toast.error('Please fix the errors before submitting');
+      return;
+    }
+
+    if (!isConnected || !isInitialized) {
+      toast.error('Please connect your wallet and wait for initialization');
+      return;
+    }
+
+    if (initError) {
+      toast.error(`Story client error: ${initError}`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      let imageUrl = formData.imageUrl;
+      
+      // Upload image to IPFS if file is provided
+      if (formData.imageFile) {
+        setUploadingImage(true);
+        try {
+          const imageHash = await uploadImageToIPFS(formData.imageFile);
+          imageUrl = `https://gateway.pinata.cloud/ipfs/${imageHash}`;
+          console.log('Image uploaded to IPFS:', imageUrl);
+        } catch (uploadError) {
+          console.error('Failed to upload image:', uploadError);
+          throw new Error('Failed to upload image to IPFS');
+        } finally {
+          setUploadingImage(false);
+        }
+      }
+
+      // Process tags
+      const tags = formData.tags
+        .split(',')
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0);
+
+      console.log('Registering IP with data:', {
+        title: formData.title,
+        description: formData.description,
+        imageUrl,
+        category: formData.category,
+        tags,
+        commercialUse: formData.commercialUse,
+        commercialRevShare: formData.commercialRevShare,
+        derivativesAllowed: formData.derivativesAllowed,
+        transferable: formData.transferable,
+      });
+
+      // Register IP Asset
+      const result = await registerIP({
+        title: formData.title,
+        description: formData.description,
+        imageUrl,
+        category: formData.category,
+        tags,
+        commercialUse: formData.commercialUse,
+        commercialRevShare: formData.commercialRevShare,
+        derivativesAllowed: formData.derivativesAllowed,
+        transferable: formData.transferable,
+      });
+
+      console.log('IP registration result:', result);
+
+      // Reset form on success
+      setFormData({
+        title: '',
+        description: '',
+        category: 'art',
+        tags: '',
+        imageFile: null,
+        imageUrl: '',
+        commercialUse: false,
+        commercialRevShare: 0,
+        derivativesAllowed: false,
+        transferable: true,
+      });
+      setImagePreview(null);
+      setErrors({});
+
+      toast.success(
+        <div>
+          <div className="font-medium">IP Asset registered successfully!</div>
+          <div className="text-sm opacity-75">Token ID: {result.tokenId}</div>
+        </div>
+      );
+
+    } catch (error) {
+      console.error('Error registering IP:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to register IP asset';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    formData, 
+    isConnected, 
+    isInitialized, 
+    initError, 
+    registerIP, 
+    setError
+  ]);
+
+  const isProcessing = isSubmitting || storyLoading || uploadingImage;
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="mb-8"
       >
-        <h1 className="text-3xl font-bold gradient-text mb-4">Register Your IP Asset</h1>
-        <p className="text-muted-foreground">
-          Protect your intellectual property on the blockchain with Story Protocol
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Shield className="h-6 w-6 text-blue-600" />
+          </div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Register IP Asset
+          </h1>
+        </div>
+        <p className="text-gray-600">
+          Protect your intellectual property on the Story Protocol blockchain
         </p>
       </motion.div>
 
-      {/* Progress Steps */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          {steps.map((stepItem, index) => (
-            <div
-              key={stepItem.id}
-              className={`flex items-center ${index < steps.length - 1 ? 'flex-1' : ''}`}
-            >
-              <div className={`flex items-center space-x-3 ${
-                stepItem.id <= step ? 'text-primary-600' : 'text-gray-400'
-              }`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  stepItem.id < step ? 'bg-primary-600 text-white' :
-                  stepItem.id === step ? 'bg-primary-100 text-primary-600 border-2 border-primary-600' :
-                  'bg-gray-200 text-gray-400'
-                }`}>
-                  {stepItem.id < step ? (
-                    <CheckCircle className="h-5 w-5" />
-                  ) : (
-                    stepItem.id
-                  )}
-                </div>
-                <div className="hidden sm:block">
-                  <div className="text-sm font-medium">{stepItem.name}</div>
-                  <div className="text-xs">{stepItem.description}</div>
-                </div>
-              </div>
-              {index < steps.length - 1 && (
-                <div className={`flex-1 h-px mx-4 ${
-                  stepItem.id < step ? 'bg-primary-600' : 'bg-gray-200'
-                }`} />
-              )}
+      {/* Connection Status */}
+      {!isConnected && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6"
+        >
+          <div className="flex items-center space-x-3">
+            <AlertCircle className="h-5 w-5 text-yellow-600" />
+            <div>
+              <h3 className="font-medium text-yellow-800">Wallet Not Connected</h3>
+              <p className="text-sm text-yellow-700 mt-1">
+                Please connect your wallet to register IP assets.
+              </p>
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
+        </motion.div>
+      )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-        {/* Step 1: Basic Info */}
-        {step === 1 && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-xl p-8 shadow-sm border border-gray-200"
-          >
-            <div className="flex items-center space-x-3 mb-6">
-              <FileText className="h-6 w-6 text-primary-600" />
-              <h2 className="text-xl font-semibold">Basic Information</h2>
+      {/* Initialization Status */}
+      {isConnected && !isInitialized && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6"
+        >
+          <div className="flex items-center space-x-3">
+            <Loader className="h-5 w-5 text-blue-600 animate-spin" />
+            <div>
+              <h3 className="font-medium text-blue-800">Initializing Story Protocol</h3>
+              <p className="text-sm text-blue-700 mt-1">
+                Please wait while we connect to the Story Protocol network...
+              </p>
             </div>
+          </div>
+        </motion.div>
+      )}
 
-            <div className="space-y-6">
+      {/* Error Display */}
+      {initError && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6"
+        >
+          <div className="flex items-center space-x-3">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <div>
+              <h3 className="font-medium text-red-800">Initialization Error</h3>
+              <p className="text-sm text-red-700 mt-1">{initError}</p>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Main Form */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white rounded-xl shadow-sm border border-gray-200 p-8"
+      >
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Basic Information */}
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-200 pb-2">
+              Basic Information
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Title *
                 </label>
                 <input
-                  {...register('title', { required: 'Title is required' })}
                   type="text"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  placeholder="Enter the title of your IP"
+                  name="title"
+                  value={formData.title}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    errors.title ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="Enter a descriptive title"
+                  required
                 />
                 {errors.title && (
-                  <p className="text-red-500 text-sm mt-1">{errors.title.message}</p>
+                  <p className="text-red-500 text-sm mt-1">{errors.title}</p>
                 )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description *
-                </label>
-                <textarea
-                  {...register('description', { required: 'Description is required' })}
-                  rows={4}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  placeholder="Describe your intellectual property in detail"
-                />
-                {errors.description && (
-                  <p className="text-red-500 text-sm mt-1">{errors.description.message}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Category *
+                  Category
                 </label>
                 <select
-                  {...register('category', { required: 'Category is required' })}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="">Select a category</option>
-                  {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
+                  <option value="art">Art & Design</option>
+                  <option value="music">Music & Audio</option>
+                  <option value="photo">Photography</option>
+                  <option value="video">Video & Film</option>
+                  <option value="document">Documents & Text</option>
+                  <option value="code">Software & Code</option>
+                  <option value="other">Other</option>
                 </select>
-                {errors.category && (
-                  <p className="text-red-500 text-sm mt-1">{errors.category.message}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Tags
-                </label>
-                <input
-                  {...register('tags')}
-                  type="text"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  placeholder="Enter tags separated by commas (e.g., digital art, NFT, creative)"
-                />
-                <p className="text-sm text-gray-500 mt-1">
-                  Tags help others discover your IP asset
-                </p>
               </div>
             </div>
-          </motion.div>
-        )}
 
-        {/* Step 2: Content Upload */}
-        {step === 2 && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-xl p-8 shadow-sm border border-gray-200"
-          >
-            <div className="flex items-center space-x-3 mb-6">
-              <Upload className="h-6 w-6 text-primary-600" />
-              <h2 className="text-xl font-semibold">Upload Content</h2>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Description *
+              </label>
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleInputChange}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  errors.description ? 'border-red-500' : 'border-gray-300'
+                }`}
+                rows={4}
+                placeholder="Provide a detailed description of your IP asset"
+                required
+              />
+              {errors.description && (
+                <p className="text-red-500 text-sm mt-1">{errors.description}</p>
+              )}
             </div>
 
-            <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Tags (comma-separated)
+              </label>
+              <input
+                type="text"
+                name="tags"
+                value={formData.tags}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., digital, abstract, modern, original"
+              />
+              <p className="text-sm text-gray-500 mt-1">
+                Add relevant tags to help others discover your IP
+              </p>
+            </div>
+          </div>
+
+          {/* Image Upload */}
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-200 pb-2">
+              Media Asset
+            </h2>
+            
+            <div className="space-y-4">
+              {/* File Upload */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Image/Media *
+                  Upload Image
                 </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary-400 transition-colors">
-                  {previewImage ? (
-                    <div className="space-y-4">
-                      <img
-                        src={previewImage}
-                        alt="Preview"
-                        className="max-w-xs mx-auto rounded-lg shadow-md"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPreviewImage('')
-                          setValue('imageUrl', '')
-                        }}
-                        className="text-sm text-red-600 hover:text-red-700"
-                      >
-                        Remove image
-                      </button>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="image-upload"
+                  />
+                  <label
+                    htmlFor="image-upload"
+                    className="flex items-center justify-center w-full px-4 py-6 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 cursor-pointer transition-colors"
+                  >
+                    <div className="text-center">
+                      <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-600">
+                        Click to upload or drag and drop
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        PNG, JPG, GIF up to 10MB
+                      </p>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <Upload className="h-12 w-12 text-gray-400 mx-auto" />
-                      <div>
-                        <p className="text-lg font-medium text-gray-900">
-                          Upload your intellectual property
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          Drag and drop or click to select files
-                        </p>
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                        id="file-upload"
-                      />
-                      <label
-                        htmlFor="file-upload"
-                        className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 cursor-pointer"
-                      >
-                        Choose File
-                      </label>
-                    </div>
-                  )}
+                  </label>
                 </div>
-                <p className="text-sm text-gray-500 mt-2">
-                  Supported formats: JPG, PNG, GIF, SVG (max 10MB)
-                </p>
               </div>
 
+              {/* URL Input */}
+              <div className="text-center text-gray-500">or</div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Or enter URL
+                  Image URL
                 </label>
                 <input
-                  {...register('imageUrl')}
                   type="url"
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  name="imageUrl"
+                  value={formData.imageUrl}
+                  onChange={handleImageUrlChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="https://example.com/image.jpg"
                 />
               </div>
-            </div>
-          </motion.div>
-        )}
 
-        {/* Step 3: License Terms */}
-        {step === 3 && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-xl p-8 shadow-sm border border-gray-200"
-          >
-            <div className="space-y-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
-                  <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-medium text-blue-800">License Terms</h3>
-                    <p className="text-sm text-blue-700 mt-1">
-                      Configure how others can use your IP asset. These terms will be enforced on-chain.
-                    </p>
-                  </div>
+              {errors.image && (
+                <p className="text-red-500 text-sm">{errors.image}</p>
+              )}
+
+              {/* Image Preview */}
+              {imagePreview && (
+                <div className="relative">
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="max-w-full h-64 object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={clearImage}
+                    className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* License Terms */}
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900 border-b border-gray-200 pb-2">
+              License Terms
+            </h2>
+            
+            <div className="space-y-4">
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="commercialUse"
+                  name="commercialUse"
+                  checked={formData.commercialUse}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="commercialUse" className="text-sm font-medium text-gray-700">
+                  Allow Commercial Use
+                </label>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                  <div>
-                    <h4 className="font-medium text-gray-900">Commercial Use</h4>
-                    <p className="text-sm text-gray-500">Allow others to use your IP commercially</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      {...register('commercialUse')}
-                      type="checkbox"
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-
-                {watchedValues.commercialUse && (
-                  <div className="ml-4 p-4 bg-gray-50 rounded-lg">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Revenue Share (%)
-                    </label>
-                    <input
-                      {...register('commercialRevShare', { 
-                        min: 0, 
-                        max: 100,
-                        valueAsNumber: true 
-                      })}
-                      type="number"
-                      min="0"
-                      max="100"
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      placeholder="0"
-                    />
-                    <p className="text-sm text-gray-500 mt-1">
-                      Percentage of revenue that derivative works must share with you
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                  <div>
-                    <h4 className="font-medium text-gray-900">Derivatives Allowed</h4>
-                    <p className="text-sm text-gray-500">Allow others to create derivatives of your IP</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      {...register('derivativesAllowed')}
-                      type="checkbox"
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-
-                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                  <div>
-                    <h4 className="font-medium text-gray-900">Transferable</h4>
-                    <p className="text-sm text-gray-500">Allow license tokens to be transferred</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      {...register('transferable')}
-                      type="checkbox"
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                </div>
-
-                <div>
+              {formData.commercialUse && (
+                <div className="ml-7">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Minting Fee (ETH)
+                    Commercial Revenue Share (%)
                   </label>
                   <input
-                    {...register('mintingFee')}
                     type="number"
-                    step="0.001"
+                    name="commercialRevShare"
+                    value={formData.commercialRevShare}
+                    onChange={handleInputChange}
+                    className={`w-32 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.commercialRevShare ? 'border-red-500' : 'border-gray-300'
+                    }`}
                     min="0"
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    placeholder="0.000"
+                    max="100"
+                    step="0.1"
                   />
+                  {errors.commercialRevShare && (
+                    <p className="text-red-500 text-sm mt-1">{errors.commercialRevShare}</p>
+                  )}
                   <p className="text-sm text-gray-500 mt-1">
-                    Fee required to mint a license token (0 for free)
+                    Percentage of revenue to be shared with you
                   </p>
                 </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Step 4: Review */}
-        {step === 4 && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-xl p-8 shadow-sm border border-gray-200"
-          >
-            <div className="flex items-center space-x-3 mb-6">
-              <CheckCircle className="h-6 w-6 text-primary-600" />
-              <h2 className="text-xl font-semibold">Review & Submit</h2>
-            </div>
-
-            <div className="space-y-6">
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex items-start space-x-3">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-medium text-yellow-800">Review Carefully</h3>
-                    <p className="text-sm text-yellow-700 mt-1">
-                      Once registered, some settings cannot be changed. Please review all information carefully.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-4">Basic Information</h3>
-                  <dl className="space-y-2">
-                    <div>
-                      <dt className="text-sm text-gray-500">Title</dt>
-                      <dd className="text-sm font-medium text-gray-900">{watchedValues.title || 'Not specified'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-gray-500">Category</dt>
-                      <dd className="text-sm font-medium text-gray-900">{watchedValues.category || 'Not specified'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-gray-500">Tags</dt>
-                      <dd className="text-sm font-medium text-gray-900">{watchedValues.tags || 'None'}</dd>
-                    </div>
-                  </dl>
-                </div>
-
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-4">License Terms</h3>
-                  <dl className="space-y-2">
-                    <div>
-                      <dt className="text-sm text-gray-500">Commercial Use</dt>
-                      <dd className={`text-sm font-medium ${watchedValues.commercialUse ? 'text-green-600' : 'text-red-600'}`}>
-                        {watchedValues.commercialUse ? 'Allowed' : 'Not Allowed'}
-                      </dd>
-                    </div>
-                    {watchedValues.commercialUse && (
-                      <div>
-                        <dt className="text-sm text-gray-500">Revenue Share</dt>
-                        <dd className="text-sm font-medium text-gray-900">{watchedValues.commercialRevShare}%</dd>
-                      </div>
-                    )}
-                    <div>
-                      <dt className="text-sm text-gray-500">Derivatives</dt>
-                      <dd className={`text-sm font-medium ${watchedValues.derivativesAllowed ? 'text-green-600' : 'text-red-600'}`}>
-                        {watchedValues.derivativesAllowed ? 'Allowed' : 'Not Allowed'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm text-gray-500">Minting Fee</dt>
-                      <dd className="text-sm font-medium text-gray-900">
-                        {watchedValues.mintingFee ? `${watchedValues.mintingFee} ETH` : 'Free'}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
-
-              {watchedValues.imageUrl && (
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-4">Preview</h3>
-                  <img
-                    src={watchedValues.imageUrl}
-                    alt="IP Preview"
-                    className="max-w-sm rounded-lg shadow-md"
-                  />
-                </div>
               )}
+
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="derivativesAllowed"
+                  name="derivativesAllowed"
+                  checked={formData.derivativesAllowed}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="derivativesAllowed" className="text-sm font-medium text-gray-700">
+                  Allow Derivative Works
+                </label>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="transferable"
+                  name="transferable"
+                  checked={formData.transferable}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="transferable" className="text-sm font-medium text-gray-700">
+                  License Transferable
+                </label>
+              </div>
             </div>
-          </motion.div>
-        )}
+          </div>
 
-        {/* Navigation Buttons */}
-        <div className="flex justify-between">
-          <button
-            type="button"
-            onClick={() => setStep(Math.max(1, step - 1))}
-            disabled={step === 1}
-            className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-              step === 1
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Previous
-          </button>
-
-          {step < 4 ? (
-            <button
-              type="button"
-              onClick={() => setStep(Math.min(4, step + 1))}
-              className="px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors"
-            >
-              Next
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={isSubmitting || !isConnected || !isInitialized}
-              className="px-8 py-3 bg-gradient-to-r from-primary-600 to-secondary-600 text-white rounded-lg font-medium hover:from-primary-700 hover:to-secondary-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="loading-spinner" />
-                  <span>Registering...</span>
-                </>
+          {/* Submit Button */}
+          <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+            <div className="text-sm text-gray-600">
+              {isConnected && isInitialized ? (
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Ready to register</span>
+                </div>
               ) : (
-                <>
-                  <Zap className="h-5 w-5" />
-                  <span>Register IP Asset</span>
-                </>
+                <div className="flex items-center space-x-2">
+                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <span>Wallet connection required</span>
+                </div>
               )}
-            </button>
-          )}
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setFormData({
+                    title: '',
+                    description: '',
+                    category: 'art',
+                    tags: '',
+                    imageFile: null,
+                    imageUrl: '',
+                    commercialUse: false,
+                    commercialRevShare: 0,
+                    derivativesAllowed: false,
+                    transferable: true,
+                  });
+                  setImagePreview(null);
+                  setErrors({});
+                }}
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={isProcessing}
+              >
+                Clear Form
+              </button>
+
+              <button
+                type="submit"
+                className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                disabled={!isConnected || !isInitialized || isProcessing}
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader className="h-4 w-4 animate-spin" />
+                    <span>
+                      {uploadingImage ? 'Uploading Image...' : 
+                       isSubmitting ? 'Registering IP...' : 
+                       'Processing...'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Shield className="h-4 w-4" />
+                    <span>Register IP Asset</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </form>
+      </motion.div>
+
+      {/* Information Cards */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6"
+      >
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <div className="flex items-center space-x-3 mb-3">
+            <Shield className="h-6 w-6 text-blue-600" />
+            <h3 className="font-semibold text-blue-800">IP Protection</h3>
+          </div>
+          <p className="text-sm text-blue-700">
+            Your intellectual property will be permanently recorded on the Story Protocol blockchain, 
+            providing immutable proof of ownership and creation timestamp.
+          </p>
         </div>
-      </form>
+
+        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+          <div className="flex items-center space-x-3 mb-3">
+            <CheckCircle className="h-6 w-6 text-green-600" />
+            <h3 className="font-semibold text-green-800">Automated Licensing</h3>
+          </div>
+          <p className="text-sm text-green-700">
+            Set your licensing terms once and automatically manage permissions, 
+            royalties, and derivative works through smart contracts.
+          </p>
+        </div>
+      </motion.div>
+
+      {/* Processing Status */}
+      {isProcessing && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        >
+          <div className="bg-white rounded-xl p-8 max-w-sm w-full mx-4">
+            <div className="text-center">
+              <Loader className="h-12 w-12 text-blue-600 animate-spin mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {uploadingImage ? 'Uploading to IPFS' : 
+                 isSubmitting ? 'Registering IP Asset' : 
+                 'Processing'}
+              </h3>
+              <p className="text-sm text-gray-600">
+                {uploadingImage ? 'Uploading your image to IPFS for decentralized storage...' :
+                 isSubmitting ? 'Creating your IP asset on the Story Protocol blockchain...' :
+                 'Please wait while we process your request...'}
+              </p>
+              <div className="mt-4 bg-gray-200 rounded-full h-2">
+                <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
-  )
-}
+  );
+};
+
+export default RegisterIP;
+
+
+
+
